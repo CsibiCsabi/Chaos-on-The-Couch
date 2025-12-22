@@ -2,7 +2,7 @@ extends Control
 
 
 @export var levelTile : PackedScene
-var levels = 10
+var levels = Szorp.parkour_levels
 func _ready() -> void:
 	for i in range(1,levels+1):
 		var tile = levelTile.instantiate()

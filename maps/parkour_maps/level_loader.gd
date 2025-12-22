@@ -35,6 +35,8 @@ func restart():
 	timer = 0
 	$p1.global_position = p1pos
 	$p1.velocity = Vector2(0,0)
+	$p1.collision_mask |= (1 << 3)
+
 
 func _process(delta: float) -> void:
 	timer += delta

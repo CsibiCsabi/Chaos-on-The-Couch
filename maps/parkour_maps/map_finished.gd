@@ -18,4 +18,7 @@ func _on_retry_pressed() -> void:
 
 func _on_next_pressed() -> void:
 	Szorp.level += 1
-	get_tree().change_scene_to_file("res://maps/parkour_maps/level_loader.tscn")
+	if Szorp.level > Szorp.parkour_levels:
+		get_tree().change_scene_to_file("res://maps/parkour_maps/final_parkour.tscn")
+	else:
+		get_tree().change_scene_to_file("res://maps/parkour_maps/level_loader.tscn")

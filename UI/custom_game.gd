@@ -23,7 +23,7 @@ func _on_starter_p_ups_value_changed(value: float) -> void:
 	Szorp.starterPowerUps = value
 
 func _on_button_pressed() -> void:
-	get_tree().change_scene_to_file("res://choose_character.tscn")
+	get_tree().change_scene_to_file("res://UI/choose_character.tscn")
 
 
 func _on_loser_mutator_toggled(toggled_on: bool) -> void:

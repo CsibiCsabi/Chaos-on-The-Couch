@@ -17,6 +17,9 @@ var roundEndMutators = true
 var level = 0
 var finish_time = 0
 
+#parkour
+var parkour_levels = 13
+
 #COLLISION LAYERS: 
 #1 - p1 
 #2 - p2

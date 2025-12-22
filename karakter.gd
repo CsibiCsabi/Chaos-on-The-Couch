@@ -23,10 +23,13 @@ func _ready() -> void:
 		}
 	
 	if player_id == 1:
+		$CanvasLayer.layer = 2
 		color = Szorp.p1color
 		apply_mutators(Szorp.p1mutators)
+		
 	else:
 		$CanvasLayer/Label.global_position.y += 40
+		$CanvasLayer/Mutators.global_position.y += 50
 		color = Szorp.p2color
 		apply_mutators(Szorp.p2mutators)
 	mySpeed = speed
@@ -155,6 +158,7 @@ var slowTime = 1
 var down_time = 0.06 # how long to go down a one way coll
 var one_way_timer = 0
 var one_way_time = 0.1
+var falling_through_one_way = false
 
 #trampoline
 var knock_back_time = 0.2
@@ -169,7 +173,6 @@ var on_floor = true
 
 func apply_map_mutator(mutator : Mutator):
 	mutator.on_apply.call(self)
-	print(str(player_id)+ ". applyoltuk a ap mutatort: "+mutator.name)
 
 func apply_mutators(mutators):
 	for mutator in mutators:
@@ -223,17 +226,13 @@ func _input(event):
 			await get_tree().create_timer(down_time).timeout
 			if currentState == PlayerState.Idle or currentState == PlayerState.Run or currentState == PlayerState.Jump: 
 				collision_mask &= ~(1 << 3)
-			else:
-				collision_mask |= (1 << 3)
 		
-		if Input.is_action_just_released("p"+str(player_id)+"down"):
-			collision_mask |= (1 << 3)
-			await get_tree().create_timer(down_time).timeout
-			collision_mask |= (1 << 3)
 		#fastfall
 		if Input.is_action_pressed("p"+str(player_id)+"down"):
 			down = true
 		else:
+			if not falling_through_one_way:
+				collision_mask |= (1 << 3)
 			down = false
 
 
@@ -250,6 +249,7 @@ func apply_poison(dmg : float):
 	return
 
 func _physics_process(delta: float) -> void:
+	print(get_collision_mask_value(4))
 	if dashTimer > 0:
 		dashTimer -= delta
 		if dashTimer < 0:
@@ -293,17 +293,11 @@ func _physics_process(delta: float) -> void:
 		
 		var on_one_way_floor = false
 		for ray in floor_raycasts: 
-			if ray.is_colliding():
-				print("collideeee")
 			if ray.is_colliding() and velocity.y >= 0:
-				print("colliding")
 				var collider = ray.get_collider()
 				if collider and collider.is_in_group("one_way_platforms"):
-					print("one_way")
 					on_one_way_floor = true 
 		
-		if on_one_way_floor:
-			print("on one way floor")
 		on_floor = on_one_way_floor or is_on_floor()
 		 
 		# Add the gravity.
@@ -432,7 +426,6 @@ func sting(number : int):
 func hit_opponent(body : Node2D, data : AttackData):
 	#TODO
 	allHurtboxesOff()
-	print("most én, p"+ str(player_id) + " megütöm " + body.name +"-t, atak: "+ data.name)
 	var force = Vector2(data.force.x * (-1 if facingLeft else 1), data.force.y)
 	# return AttackData.new(data.name, dmg, force, data.stunTime)
 	body.hit(AttackData.new(data.name, data.dmg, force, data.stunTime + (0 if data.name in stunExceptionAttacks else plusStun)), strength, poison, stinger, (1.5*slow if "heavy" in data.name else slow))
@@ -517,7 +510,6 @@ func down_heavy_2():
 	second = true
 
 func monitor_area2D(boo : bool):
-	print("monitoring: "+ str(boo))
 	$Sprite2D/sword_neutral.monitoring = boo
 	$Sprite2D/sword_side.monitoring = boo
 	$Sprite2D/sword_down.monitoring = boo
@@ -651,7 +643,6 @@ func _on_animation_player_animation_finished(anim_name: StringName) -> void:
 	allHurtboxesOff()
 
 	if hitSomething and anim_name == "sword_side_heavy":
-		print("side_heavy combo")
 		anim_player.play("sword_side_heavy2")
 		return
 		
@@ -727,7 +718,6 @@ func dair_hit(body: Node2D) -> void:
 	hit_opponent(body, attacks["sword_dair"])
 
 func clash():
-	print("klissi clash")
 	allHurtboxesOff()
 	var clashForce = attacks["clash"].force
 	hit(AttackData.new("clash",0,Vector2(clashForce.x * (1 if facingLeft else -1), clashForce.y), 0.2), strength, 0, 0, 0)
@@ -799,3 +789,13 @@ func _on_sword_heavy_down_body_entered(body: Node2D) -> void:
 		
 #PARKOUR
 #mi a gyasz
+
+
+func _on_one_way_pls_work_body_entered(body: Node2D) -> void:
+	if body.is_in_group("one_way_platforms"):
+		collision_mask &= ~(1 << 3)
+		falling_through_one_way = true
+		await  get_tree().create_timer(0.2).timeout
+		collision_mask |= ~(1 << 3)
+		falling_through_one_way = false
+		

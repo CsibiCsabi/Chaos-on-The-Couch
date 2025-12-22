@@ -11,7 +11,7 @@ func add_built_in_mutators():
 	#COMMONOK
 	#strength
 	var mutator = Mutator.new("strength", "more strength", "Who's a big boy?", rarity.common, func(player):
-			player.strength += 10
+			player.strength += 4
 			)
 	all_mutators[mutator.name] = mutator
 	#agility
@@ -60,13 +60,13 @@ func add_built_in_mutators():
 	#RARE
 	#push dodge
 	mutator = Mutator.new("Pushy", "Push away and stun opponents with your dodge!", "You're in my way? Seems like a you problem...", rarity.rare, func(player):
-			player.pushDodge =+ 400
+			player.pushDodge += 400
 			player.stunDodge += 0.2
 			)
 	all_mutators[mutator.name] = mutator
 	#damage dodge
 	mutator = Mutator.new("Straight forward", "Damage and stun opponents with your dodge!", "The best defense is offense!", rarity.rare, func(player):
-			player.attackDodge =+ 0.3
+			player.attackDodge += 0.3
 			player.stunDodge += 0.2
 			)
 	all_mutators[mutator.name] = mutator
@@ -75,7 +75,7 @@ func add_built_in_mutators():
 	
 	#poison # 11.
 	mutator = Mutator.new("Stinky Sword", "Apply poison to your enemy upon hitting them!", "Why is it so smelly in here?", rarity.rare, func(player):
-			player.poison += 3
+			player.poison += 1
 			)
 	all_mutators[mutator.name] = mutator
 	#stinger # 12.
@@ -86,7 +86,7 @@ func add_built_in_mutators():
 	
 	#slow 13.
 	mutator = Mutator.new("Sticky Sword", "Slow your opponent after hitting them!", "There's no escape!", rarity.rare, func(player):
-			player.slow += 100
+			player.slow += 40
 			print("majomparade")
 			)
 	all_mutators[mutator.name] = mutator

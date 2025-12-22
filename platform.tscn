@@ -20,10 +20,12 @@ mutator_box_scene = ExtResource("77_xr4gn")
 [node name="p2" parent="." instance=ExtResource("3_xyfwc")]
 player_id = 2
 
-[node name="Camera2D" type="Camera2D" parent="."]
+[node name="Camera2D" type="Camera2D" parent="." node_paths=PackedStringArray("p1", "p2")]
 position = Vector2(580, 324)
 zoom = Vector2(0.9, 0.9)
 script = ExtResource("79_ubhxk")
+p1 = NodePath("../p1")
+p2 = NodePath("../p2")
 
 [node name="DeathZone_floor" type="Area2D" parent="."]
 position = Vector2(186, 646)
