@@ -15,22 +15,42 @@ func update_frame(global_frame : int):
 	for i in range(passed_frames):
 		process_single_frame()
 
+const FPS = 60.0
+
+func process_stun_frame():
+	stun_frames -= 1
+	
+	velocity.x = move_toward(velocity.x, 0, 1000/FPS)
+	var gravity_per_frame = get_gravity() / FPS
+	
+	velocity += gravity_per_frame * gravityMultiplier
+	print("being stunned, remaining: ", stun_frames)
+	
+	if stun_frames == 0:
+		end_stun()
+
+func process_attack_frame():
+	current_attack_frame += 1
+	enable_hitbox_for_attack(current_attack.name, current_attack_frame)
+	
+	var fd = current_attack.frame_data
+	# TODO: USE current_attack variable and change hierarchy in karakter body like: area2D: atackname/ collision_shape: number => how many attack sprites? > dynamic change
+	var phase = fd.get_phase(current_attack_frame)
+	var has_hitbox = current_attack.attack_anim.get_hitbox_index_for_frame(current_attack_frame) >= 1
+	if has_hitbox:
+		print("Frame ", current_attack_frame, " (", phase, "): 🟥 HITBOX")
+	elif phase == "active":
+		print("Frame ", current_attack_frame, " (", phase, "): ⬜ NO HITBOX (bug?)")
+	if current_attack_frame > fd.total:
+		end_attack()
+
 func process_single_frame():
 	#check for attack (rn only thing)
+	if stun_frames > 0:
+		process_stun_frame()
+		return
 	if current_attack:
-		current_attack_frame += 1
-		enable_hitbox_for_attack(current_attack.name, current_attack_frame)
-		
-		var fd = current_attack.frame_data
-		# TODO: USE current_attack variable and change hierarchy in karakter body like: area2D: atackname/ collision_shape: number => how many attack sprites? > dynamic change
-		var phase = fd.get_phase(current_attack_frame)
-		var has_hitbox = current_attack.attack_anim.get_hitbox_index_for_frame(current_attack_frame) >= 1
-		if has_hitbox:
-			print("Frame ", current_attack_frame, " (", phase, "): 🟥 HITBOX")
-		elif phase == "active":
-			print("Frame ", current_attack_frame, " (", phase, "): ⬜ NO HITBOX (bug?)")
-		if current_attack_frame > fd.total:
-			end_attack()
+		process_attack_frame()
 	process_frame_timers()
 
 func start_attack(name : String):
@@ -74,24 +94,20 @@ func enable_hitbox_for_attack(attack_name: String, frame_in_attack: int):
 func process_frame_timers():
 	pass
 
-func quick_hitbox_test():
-	print("⚡ Quick Hitbox Test")
-	
-	var fd = FrameData.new(5, 3, 12, 18)
-	
-	# Create animation with specific sprites
-	var active_sprites = [null, null]  # 2 active sprites
-	var anim = AttackAnimation.new(fd, [null], active_sprites, [null])
-	
-	print("Active frames: ", fd.active)
-	print("Active sprites: ", active_sprites.size())
-	print("")
-	
-	# Test only active frames
-	for frame in range(fd.startup, fd.startup + fd.active):
-		var hitbox = anim.get_hitbox_index_for_frame(frame)
-		print("Frame ", frame, ": Hitbox ", hitbox)
-	
+func end_stun():
+	knock_back_timer = 0
+	canMove = true
+	canAttack = true
+	hitSomething = false
+	facingLeft = !facingLeft
+	sprite.scale.x = -1 if facingLeft else 1
+	if abs(velocity.x) > 0.3 and usingController:
+		change_state(PlayerState.Run, "run")
+	elif abs(velocity.x) > 0 and not usingController:
+		change_state(PlayerState.Run, "run")
+	else:
+		change_state(PlayerState.Idle, "idle")
+
 
 @export var mutator_box_scene: PackedScene
 @export var player_id = 1
@@ -137,9 +153,8 @@ func _ready() -> void:
 	mySpeed = speed
 	sprite.self_modulate = color
 	attacks = {
-		"sword_side" : AttackData.new("sword_side", 1,Vector2(400,-100), FrameData.new(6,3,10,14), AttackAnimation.new(FrameData.new(6,3,10,14), [],[1],[])),
+		"sword_side" : AttackData.new("sword_side", 1,Vector2(400,-100), FrameData.new(12,6,20,30), AttackAnimation.new(FrameData.new(12,6,20,30), [],[1],[])),
 	}
-	quick_hitbox_test()
 
 
 var strength : float = 10
@@ -199,9 +214,8 @@ var stunExceptionAttacks = ["sword_down", "sword_dair", "spike"]
 var noAttackAnims = ["run", "idle", "hurt", "jump", "dash"]
 
 #stun/beung hurt
-var stunned = false
 var currentForce = Vector2(0,0)
-var stunTimer = 0
+var stun_frames : int = 0
 
 #for mutators
 var gravityMultiplier = 1.0
@@ -320,6 +334,7 @@ func apply_poison(dmg : float):
 	label.text = "Player "+str(player_id)+" HP: "+str(hp)
 	return
 
+
 func _physics_process(delta: float) -> void:
 	if dashTimer > 0:
 		dashTimer -= delta
@@ -337,26 +352,8 @@ func _physics_process(delta: float) -> void:
 		slowTimer -= delta
 		if slowTimer < 0:
 			speed = mySpeed
-	if stunned:
-		velocity.x = move_toward(velocity.x, 0, 1000 * delta)
-		velocity += get_gravity() * delta * gravityMultiplier
-		stunTimer -= delta
-		if stunTimer < 0:
-			knock_back_timer = 0
-			stunned = false
-			canMove = true
-			canAttack = true
-			hitSomething = false
-			facingLeft = !facingLeft
-			sprite.scale.x = -1 if facingLeft else 1
-			if abs(velocity.x) > 0.3 and usingController:
-				change_state(PlayerState.Run, "run")
-			elif abs(velocity.x) > 0 and not usingController:
-				change_state(PlayerState.Run, "run")
-			else:
-				change_state(PlayerState.Idle, "idle")
-		
-
+	if stun_frames > 0:
+		print()
 	else: #no stun
 		for key in inputBuffers.keys():
 			if inputBuffers[key] > 0:
@@ -443,7 +440,6 @@ func hit(data : AttackData, _str : int, _poison : float, _stinger : int, _slow :
 			speed = mySpeed - _slow
 			slowTimer = slowTime
 		#stun mechanic
-		stunned = true
 		collision_mask &= ~(1 << 3)
 		one_way_timer = one_way_time
 		sprite.scale.x = 1 if data.force.x > 0 else -1
@@ -456,10 +452,9 @@ func hit(data : AttackData, _str : int, _poison : float, _stinger : int, _slow :
 			var forceY = data.force.y * (1 + hp / (defense*2))
 			velocity = Vector2(forceX, forceY)
 		if data.name in stunExceptionAttacks:
-			stunTimer = data.frame_data.hitstun * 60 / 1000
+			stun_frames = data.frame_data.hitstun
 		else:
-			stunTimer = data.frame_data.hitstun * 60 / 100 * (1 + hp / (defense*2))
-
+			stun_frames = int(data.frame_data.hitstun * (1 + hp / (defense*2)))
 		hp += data.damage * _str / (defense / 100)
 		label.text = "Player "+str(player_id)+" HP: "+str(hp)
 		if _poison != 0:
@@ -469,15 +464,16 @@ func hit(data : AttackData, _str : int, _poison : float, _stinger : int, _slow :
 			sting(_stinger)
 		return
 
+#TODO: STING + EVERY MUTATOR NOT WORKING
+
 func sting(number : int):
-	await get_tree().create_timer(stunTimer).timeout
+	await get_tree().create_timer(1).timeout # this was stunTimer
 	stingTimer = stingCooldown
 	for i in range(number):
 		await get_tree().create_timer(1).timeout
-		stunned = true
 		change_state(PlayerState.Hurt, "hurt")
 		velocity.x = 0
-		stunTimer = 0.3
+		stun_frames = 5
 
 
 
@@ -813,19 +809,7 @@ func _on_sword_heavy_side_body_entered(body: Node2D) -> void:
 		hit_opponent(body, attacks["sword_heavy_side2"])
 	else:
 		hit_opponent(body, attacks["sword_heavy_side1"])
-	"""
-	hitCount +=1
-	if finisher:
-		hit_opponent(body, attacks["sword_heavy_side2"])
-	else:
-		hit_opponent(body, attacks["sword_heavy_side1"])
-	if hitCount == 1:
-		anim_player.play("sword_side_heavy2")
-	if next:
-		facingLeft = not facingLeft
-		finisher = true
-		next = false
-	"""
+	
 
 
 

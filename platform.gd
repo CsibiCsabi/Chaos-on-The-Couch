@@ -17,7 +17,19 @@ var current_frame : int = 0
 func advance_frame():
 	current_frame += 1
 
+var frame_counter : int = 0
+var last_time : float = 0.0
+
 func _physics_process(delta: float) -> void:
+	frame_counter += 1
+	
+	# Print FPS every second
+	var current_time = Time.get_ticks_msec() / 1000.0
+	if current_time - last_time >= 1.0:
+		print("ACTUAL FPS: ", frame_counter, " (should be 60)")
+		frame_counter = 0
+		last_time = current_time
+	
 	advance_frame()
 	for player in get_tree().get_nodes_in_group("players"):
 		player.update_frame(current_frame)
