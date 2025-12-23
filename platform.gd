@@ -1,9 +1,9 @@
 extends Node2D
 
-
 @onready var p1 = $p1
 @onready var p2 = $p2
 @export var mutator_box_scene : PackedScene
+
 
 
 func _ready() -> void:
@@ -11,6 +11,16 @@ func _ready() -> void:
 	if Szorp.chosen_gamemode == Szorp.Gamemode.infected or Szorp.infectedMaps:
 		print("infectedunk van")
 		applyMapMutator()
+
+var current_frame : int = 0
+
+func advance_frame():
+	current_frame += 1
+
+func _physics_process(delta: float) -> void:
+	advance_frame()
+	for player in get_tree().get_nodes_in_group("players"):
+		player.update_frame(current_frame)
 
 
 func applyMapMutator():

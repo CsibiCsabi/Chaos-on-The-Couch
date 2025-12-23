@@ -1,7 +1,109 @@
 extends CharacterBody2D
 
+#FRAME IMPLEMENTATION STUFF
+var last_processed_frame : int = -1
+var current_attack : AttackData = null
+var current_attack_frame : int = -1
+
+func update_frame(global_frame : int):
+	if last_processed_frame == -1:
+		last_processed_frame = global_frame
+		return
+	#checking that actually 1 frame passed
+	var passed_frames = global_frame - last_processed_frame
+	last_processed_frame = global_frame
+	for i in range(passed_frames):
+		process_single_frame()
+
+func process_single_frame():
+	#check for attack (rn only thing)
+	if current_attack:
+		current_attack_frame += 1
+		enable_hitbox_for_attack(current_attack.name, current_attack_frame)
+		
+		var fd = current_attack.frame_data
+		# TODO: USE current_attack variable and change hierarchy in karakter body like: area2D: atackname/ collision_shape: number => how many attack sprites? > dynamic change
+		var phase = fd.get_phase(current_attack_frame)
+		var has_hitbox = current_attack.attack_anim.get_hitbox_index_for_frame(current_attack_frame) >= 1
+		if has_hitbox:
+			print("Frame ", current_attack_frame, " (", phase, "): 🟥 HITBOX")
+		elif phase == "active":
+			print("Frame ", current_attack_frame, " (", phase, "): ⬜ NO HITBOX (bug?)")
+		if current_attack_frame > fd.total:
+			end_attack()
+	process_frame_timers()
+
+func start_attack(name : String):
+	if not canAttack or null != current_attack:
+		print("ERROR at start_attack")
+		return
+	current_attack = attacks[name]
+	current_attack_frame = 0
+	canAttack = false
+	
+	anim_player.play(name)
+	
+	print("attack started! ", name)
+# TODO:  TEST, convert stun/dash to frame 
+
+func end_attack():
+	current_attack = null
+	current_attack_frame = -1
+	canAttack = true
+	disable_hitboxes()
+
+func enable_hitbox_for_attack(attack_name: String, frame_in_attack: int):
+	# Get the AttackAnimation for this attack
+	var attack = attacks[attack_name]
+	if not attack.frame_data.is_in_active(frame_in_attack):
+		return
+	var anim : AttackAnimation = attack.attack_anim
+	
+	# Ask the animation: "Which hitbox should be active for this frame?"
+	var hitbox_index = anim.get_hitbox_index_for_frame(frame_in_attack)
+	
+	if hitbox_index >= 1:
+		disable_hitboxes()
+		var hitbox_path = "Sprite2D/{0}/{1}".format([attack_name, hitbox_index])
+		var hitbox = get_node(hitbox_path)
+		if hitbox:
+			hitbox.disabled = false
+			hitbox.get_parent().monitoring = true
+			print("Enabled hitbox: ", hitbox_path, " for frame ", frame_in_attack)
+
+func process_frame_timers():
+	pass
+
+func quick_hitbox_test():
+	print("⚡ Quick Hitbox Test")
+	
+	var fd = FrameData.new(5, 3, 12, 18)
+	
+	# Create animation with specific sprites
+	var active_sprites = [null, null]  # 2 active sprites
+	var anim = AttackAnimation.new(fd, [null], active_sprites, [null])
+	
+	print("Active frames: ", fd.active)
+	print("Active sprites: ", active_sprites.size())
+	print("")
+	
+	# Test only active frames
+	for frame in range(fd.startup, fd.startup + fd.active):
+		var hitbox = anim.get_hitbox_index_for_frame(frame)
+		print("Frame ", frame, ": Hitbox ", hitbox)
+	
+
+@export var mutator_box_scene: PackedScene
+@export var player_id = 1
+@onready var label = $CanvasLayer/Label
+@onready var anim_player = $AnimationPlayer
+@onready var sprite = $Sprite2D
+@onready var floor_raycasts = [$RayCast2D, $RayCast2D2]
+
+
 func _ready() -> void:
 	change_state(PlayerState.Idle, "idle")
+	add_to_group("players")
 	add_to_group("player"+str(player_id))
 	label.text = "Player "+str(player_id)+" HP: "+str(hp)
 	inputBuffers = {
@@ -12,9 +114,9 @@ func _ready() -> void:
 	}
 	#controllers
 	var controllers = Input.get_connected_joypads()
-	if controllers.size() >= player_id:
-		controller_id = controllers[player_id-1] 
-		usingController = true
+	#if controllers.size() >= player_id:
+	#	controller_id = controllers[player_id-1] 
+	#	usingController = true
 	inputs = {
 		"attack" : JOY_BUTTON_X,
 		"jump" : JOY_BUTTON_A,
@@ -35,50 +137,22 @@ func _ready() -> void:
 	mySpeed = speed
 	sprite.self_modulate = color
 	attacks = {
-		"sword_neutral" : AttackData.new("sword_neutral", 1.4, Vector2(300,-200), 0.3),
-		"sword_side" : AttackData.new("sword_side", 1,Vector2(400,-100), 0.2),
-		"sword_down" : AttackData.new("sword_down", 0.8,Vector2(200,-240), 0.5),
-		"sword_nair" : AttackData.new("sword_nair", 1,Vector2(200,-250), 0.25),
-		"sword_dair" : AttackData.new("sword_dair", 1.2,Vector2(10,100), 0.15),
-		"clash" : AttackData.new("clash", 0,Vector2(400,-200), 0.2),
-		"sword_heavy_neutral1" : AttackData.new("sword_heavy_neutral1", 1.1, Vector2(100,-330), 0.5),
-		"sword_heavy_neutral2" : AttackData.new("sword_heavy_neutral2", 1.5, Vector2(400,0), 0.3),
-		"sword_heavy_side1" : AttackData.new("sword_heavy_side1", 0.6, Vector2(0,-100), 0.3),
-		"sword_heavy_side2" : AttackData.new("sword_heavy_side2", 1.2, Vector2(350,50), 0.35),
-		"sword_heavy_down1" : AttackData.new("sword_heavy_down1", 1.7, Vector2(500,-100), 0.5),
-		"sword_heavy_down2" : AttackData.new("sword_heavy_down2", 1.7, Vector2(-500,-100), 0.5),
+		"sword_side" : AttackData.new("sword_side", 1,Vector2(400,-100), FrameData.new(6,3,10,14), AttackAnimation.new(FrameData.new(6,3,10,14), [],[1],[])),
 	}
-
-var noMultiplierAttacks = ["sword_down", "sword_heavy_neutral1", "sword_heavy_side1", "spike" ]
-var stunExceptionAttacks = ["sword_down", "sword_dair", "spike"]
+	quick_hitbox_test()
 
 
 var strength : float = 10
 var defense : float = 100
 # (1 + hp / defense) the knockback multiplier
 var hp : float = 0
-@export var mutator_box_scene: PackedScene
-class AttackData:
-	var name : String
-	var dmg: float
-	var force: Vector2
-	var stunTime : float
-
-	func _init(_name, _damage, _force, _stunTime):
-		name = _name
-		dmg = _damage
-		force = _force
-		stunTime = _stunTime
+var color
 
 #state
 enum PlayerState {Idle, Run, Attack, Jump, Dash, Hurt}
 var currentState: PlayerState;
-var plusStun = 0.0
-var color
-@export var player_id = 1
-@onready var label = $CanvasLayer/Label
-@onready var anim_player = $AnimationPlayer
-@onready var sprite = $Sprite2D
+
+
 var attacks = {}
 var speed = 400
 var canMove = true
@@ -120,9 +194,8 @@ var justJumped = false
 var inputBuffers = {}
 var nairCount = 0
 var maxNairs = 2
-
-
-
+var noMultiplierAttacks = ["sword_down", "sword_heavy_neutral1", "sword_heavy_side1", "spike" ]
+var stunExceptionAttacks = ["sword_down", "sword_dair", "spike"]
 var noAttackAnims = ["run", "idle", "hurt", "jump", "dash"]
 
 #stun/beung hurt
@@ -132,8 +205,8 @@ var stunTimer = 0
 
 #for mutators
 var gravityMultiplier = 1.0
-var dashVertical
-var dashHorizontal
+var plusStun = 0.0
+
 #dash mutators
 var pushDodge = 0 # 400-600
 var attackDodge = 0.0 # multiplier 0-2
@@ -167,7 +240,6 @@ var trampoline_force = Vector2(0,0)
 
 var down = false # fast fallhoz
 
-@onready var floor_raycasts = [$RayCast2D, $RayCast2D2]
 
 var on_floor = true
 
@@ -249,7 +321,6 @@ func apply_poison(dmg : float):
 	return
 
 func _physics_process(delta: float) -> void:
-	print(get_collision_mask_value(4))
 	if dashTimer > 0:
 		dashTimer -= delta
 		if dashTimer < 0:
@@ -343,38 +414,25 @@ func _physics_process(delta: float) -> void:
 		update_state(direction)
 	move_and_slide()
 
-func allHurtboxesOff():
-	$Sprite2D/sword_neutral/sword_neutral.disabled = true
-	$Sprite2D/sword_side/sword_side.disabled = true
-	$Sprite2D/sword_down/sword_down.disabled = true
-	$"Sprite2D/sword_down/1".disabled = true
-	$"Sprite2D/sword_down/2".disabled = true
-	$"Sprite2D/sword_nair/1".disabled = true
-	$"Sprite2D/sword_nair/2".disabled = true
-	$"Sprite2D/sword_nair/3".disabled = true
-	$"Sprite2D/sword_dair/1".disabled = true
-	$"Sprite2D/sword_heavy_neutral/1".disabled = true
-	$"Sprite2D/sword_heavy_neutral/2".disabled = true
-	$"Sprite2D/sword_heavy_side/1".disabled = true
-	$"Sprite2D/sword_heavy_side/2".disabled = true
-	$"Sprite2D/sword_heavy_side/finish1".disabled = true
-	$"Sprite2D/sword_heavy_side/finish2".disabled = true
-	$Sprite2D/dodge/dodge.disabled = true
-	$"Sprite2D/sword_heavy_down/1".disabled = true
-	$"Sprite2D/sword_heavy_down/2".disabled = true
-
+func disable_hitboxes():
+	for area in $Sprite2D.get_children():
+		if area is Area2D:
+			area.monitoring = false
+			for child in area.get_children():
+				if child is CollisionShape2D:
+					child.disabled = true
 
 func die():
 	Szorp.i_lost(player_id)
 	queue_free()
 
 func spike_hit():
-	hit(AttackData.new("spike", 0.5, Vector2(0,-500), 0.3), 10,0,0,0)
+	#hit(AttackData.new("spike", 0.5, Vector2(0,-500)), 10,0,0,0)
 	return
 
 func hit(data : AttackData, _str : int, _poison : float, _stinger : int, _slow : int)->void:
 	hitCount = 0
-	allHurtboxesOff()
+	disable_hitboxes()
 	
 	if not hurtable:
 		return
@@ -398,11 +456,11 @@ func hit(data : AttackData, _str : int, _poison : float, _stinger : int, _slow :
 			var forceY = data.force.y * (1 + hp / (defense*2))
 			velocity = Vector2(forceX, forceY)
 		if data.name in stunExceptionAttacks:
-			stunTimer = data.stunTime
+			stunTimer = data.frame_data.hitstun * 60 / 1000
 		else:
-			stunTimer = data.stunTime * (1 + hp / (defense*2))
+			stunTimer = data.frame_data.hitstun * 60 / 100 * (1 + hp / (defense*2))
 
-		hp += data.dmg * _str / (defense / 100)
+		hp += data.damage * _str / (defense / 100)
 		label.text = "Player "+str(player_id)+" HP: "+str(hp)
 		if _poison != 0:
 			poisonsToBeAdded = 4
@@ -425,10 +483,10 @@ func sting(number : int):
 
 func hit_opponent(body : Node2D, data : AttackData):
 	#TODO
-	allHurtboxesOff()
+	disable_hitboxes()
 	var force = Vector2(data.force.x * (-1 if facingLeft else 1), data.force.y)
 	# return AttackData.new(data.name, dmg, force, data.stunTime)
-	body.hit(AttackData.new(data.name, data.dmg, force, data.stunTime + (0 if data.name in stunExceptionAttacks else plusStun)), strength, poison, stinger, (1.5*slow if "heavy" in data.name else slow))
+	body.hit(AttackData.new(data.name, data.damage, force, data.frame_data, data.attack_anim), strength, poison, stinger, (1.5*slow if "heavy" in data.name else slow))
 
 
 
@@ -520,7 +578,6 @@ func monitor_area2D(boo : bool):
 	$Sprite2D/sword_heavy_down.monitoring = boo
 
 func attack(heavy : bool) -> void:
-	canAttack = false
 	currentState = PlayerState.Attack
 	
 	#nagyon utalom ezt az egeszet
@@ -573,7 +630,12 @@ func attack(heavy : bool) -> void:
 			return
 		nairCount += 1
 	var weight = "_heavy" if heavy else ""
-	anim_player.play(weapon+"_"+attackType + weight)
+	var attack_data = attacks[weapon+"_"+attackType + weight] 
+	print("This attack has ", attack_data.frame_data.total, " total frames")
+	print("Hitbox active from frame ", attack_data.frame_data.hitbox_start, 
+		  " to ", attack_data.frame_data.hitbox_end)
+	var attack = weapon+"_"+attackType + weight
+	start_attack(attack)
 
 func attacking()->void:
 	var t = $AnimationPlayer.current_animation_position
@@ -622,8 +684,6 @@ func dash() -> void:
 	
 	velocity.x = (horizontal * horizontalDashForce * horizontalSzorzo)
 	velocity.y = vertical * verticalDashForce *verticalSzorzo
-	dashVertical = vertical
-	dashHorizontal = horizontal
 	
 	await get_tree().create_timer(anim_player.get_animation("dash").length+supper).timeout
 	canMove = true
@@ -640,7 +700,7 @@ func _on_animation_player_animation_finished(anim_name: StringName) -> void:
 
 	if anim_name in noAttackAnims:
 		return
-	allHurtboxesOff()
+	disable_hitboxes()
 
 	if hitSomething and anim_name == "sword_side_heavy":
 		anim_player.play("sword_side_heavy2")
@@ -718,9 +778,9 @@ func dair_hit(body: Node2D) -> void:
 	hit_opponent(body, attacks["sword_dair"])
 
 func clash():
-	allHurtboxesOff()
+	disable_hitboxes()
 	var clashForce = attacks["clash"].force
-	hit(AttackData.new("clash",0,Vector2(clashForce.x * (1 if facingLeft else -1), clashForce.y), 0.2), strength, 0, 0, 0)
+	hit(AttackData.new("clash",0,Vector2(clashForce.x * (1 if facingLeft else -1), clashForce.y)), strength, 0, 0, 0)
 	
 
 
@@ -773,7 +833,7 @@ func _on_dodge_body_entered(body: Node2D) -> void:
 	if body.is_in_group("player"+str(player_id)):
 		return
 	var dashIrany = Vector2(0,0)
-	dashIrany = Vector2(dashHorizontal * pushDodge * 1.2, dashVertical* pushDodge)
+	dashIrany = Vector2(horizontal * pushDodge * 1.2, vertical* pushDodge)
 	body.hit(AttackData.new("dodge", attackDodge, dashIrany, stunDodge), strength, 0, 0, 0)
 		
 
