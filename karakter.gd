@@ -24,7 +24,6 @@ func process_stun_frame():
 	var gravity_per_frame = get_gravity() / FPS
 	
 	velocity += gravity_per_frame * gravityMultiplier
-	print("being stunned, remaining: ", stun_frames)
 	
 	if stun_frames == 0:
 		end_stun()
@@ -44,6 +43,13 @@ func process_attack_frame():
 	if current_attack_frame > fd.total:
 		end_attack()
 
+func process_dash_frame():
+	dash_frames -=1
+	if dash_frames == 0:
+		canDash = true
+
+	
+
 func process_single_frame():
 	#check for attack (rn only thing)
 	if stun_frames > 0:
@@ -51,7 +57,24 @@ func process_single_frame():
 		return
 	if current_attack:
 		process_attack_frame()
+	if dash_frames > 0:
+		process_dash_frame()
 	process_frame_timers()
+	if sting_frames > 0:
+		sting_frames -= 1
+	if before_sting_frames > 0: #BEING stung
+		print("whatchu doin'?")
+		process_being_stung()
+
+func process_being_stung():
+	before_sting_frames -=1
+	if before_sting_frames == 0:
+		stings_to_apply -=1
+		change_state(PlayerState.Hurt, "hurt")
+		stun_frames = 15
+		velocity = Vector2(0,velocity.y)
+		if stings_to_apply > 0:
+			before_sting_frames = waitTimeBeforeSting
 
 func start_attack(name : String):
 	if not canAttack or null != current_attack:
@@ -69,6 +92,7 @@ func start_attack(name : String):
 func end_attack():
 	current_attack = null
 	current_attack_frame = -1
+	canMove = true
 	canAttack = true
 	disable_hitboxes()
 
@@ -84,6 +108,7 @@ func enable_hitbox_for_attack(attack_name: String, frame_in_attack: int):
 	
 	if hitbox_index >= 1:
 		disable_hitboxes()
+
 		var hitbox_path = "Sprite2D/{0}/{1}".format([attack_name, hitbox_index])
 		var hitbox = get_node(hitbox_path)
 		if hitbox:
@@ -187,11 +212,11 @@ var controller_id = -1
 var contiDeadzone = 0.3
 
 #dash
-var dashTimer = 0.0
+var dash_frames : int = 0
 var canDash = true
 var horizontalDashForce = 500
 var verticalDashForce = 300
-var dashCooldown = 1
+var dashCooldown : int = 60
 var horizontal
 var vertical
 var verticalSzorzo = 1
@@ -233,8 +258,11 @@ var poisonDamage = 0 #the poison you take as dmg
 var canApplyPoison = true
 #stinger
 var stinger = 0
-var stingTimer = -0.1
-var stingCooldown = 5
+var sting_frames : int = 0
+var stings_to_apply : int = 0
+var before_sting_frames = 0
+var waitTimeBeforeSting = 60 #1 sec between stings
+var stingCooldown = 300
 #slow
 var slow = 0 # your slow effect
 var mySpeed = speed 
@@ -336,18 +364,12 @@ func apply_poison(dmg : float):
 
 
 func _physics_process(delta: float) -> void:
-	if dashTimer > 0:
-		dashTimer -= delta
-		if dashTimer < 0:
-			canDash = true
 	if one_way_timer >= 0:
 		one_way_timer -= delta
 		if one_way_timer < 0:
 			collision_mask |= (1 << 3)
 	if poisonsToBeAdded > 0 and canApplyPoison:
 		apply_poison(poisonDamage)
-	if stingTimer > 0:
-		stingTimer-= delta
 	if slowTimer > 0:
 		slowTimer -= delta
 		if slowTimer < 0:
@@ -418,6 +440,15 @@ func disable_hitboxes():
 			for child in area.get_children():
 				if child is CollisionShape2D:
 					child.disabled = true
+	#call_deferred("_disable_deferred")
+
+func _disable_deferred():
+	for area in $Sprite2D.get_children():
+		if area is Area2D:
+			area.monitoring = false
+			for child in area.get_children():
+				if child is CollisionShape2D:
+					child.disabled = true
 
 func die():
 	Szorp.i_lost(player_id)
@@ -429,8 +460,6 @@ func spike_hit():
 
 func hit(data : AttackData, _str : int, _poison : float, _stinger : int, _slow : int)->void:
 	hitCount = 0
-	disable_hitboxes()
-	
 	if not hurtable:
 		return
 	else:
@@ -460,29 +489,26 @@ func hit(data : AttackData, _str : int, _poison : float, _stinger : int, _slow :
 		if _poison != 0:
 			poisonsToBeAdded = 4
 			poisonDamage = _poison
-		if _stinger != 0 and stingTimer < 0:
+		if _stinger != 0:
 			sting(_stinger)
 		return
 
 #TODO: STING + EVERY MUTATOR NOT WORKING
 
+
 func sting(number : int):
-	await get_tree().create_timer(1).timeout # this was stunTimer
-	stingTimer = stingCooldown
-	for i in range(number):
-		await get_tree().create_timer(1).timeout
-		change_state(PlayerState.Hurt, "hurt")
-		velocity.x = 0
-		stun_frames = 5
+	stings_to_apply = number
+	before_sting_frames = waitTimeBeforeSting
+	sting_frames = stingCooldown
+	
 
 
 
 func hit_opponent(body : Node2D, data : AttackData):
 	#TODO
-	disable_hitboxes()
 	var force = Vector2(data.force.x * (-1 if facingLeft else 1), data.force.y)
 	# return AttackData.new(data.name, dmg, force, data.stunTime)
-	body.hit(AttackData.new(data.name, data.damage, force, data.frame_data, data.attack_anim), strength, poison, stinger, (1.5*slow if "heavy" in data.name else slow))
+	body.hit(AttackData.new(data.name, data.damage, force, data.frame_data, data.attack_anim), strength, poison, (stinger if sting_frames == 0 else 0), (1.5*slow if "heavy" in data.name else slow))
 
 
 
@@ -657,7 +683,7 @@ func dash() -> void:
 	canMove = false
 	hurtable = false
 	change_state(PlayerState.Dash, "dash")
-	dashTimer = dashCooldown * (1.2 if not is_on_floor() else 1)
+	dash_frames = int(dashCooldown * (1.2 if not is_on_floor() else 1))
 	
 	if usingController:
 		horizontal = (1 if Input.get_joy_axis(controller_id, JOY_AXIS_LEFT_X) > contiDeadzone else 0) + (-1 if Input.get_joy_axis(controller_id, JOY_AXIS_LEFT_X) < (-1*contiDeadzone) else 0)
@@ -693,10 +719,9 @@ func dash() -> void:
 	
 
 func _on_animation_player_animation_finished(anim_name: StringName) -> void:
-
+	
 	if anim_name in noAttackAnims:
 		return
-	disable_hitboxes()
 
 	if hitSomething and anim_name == "sword_side_heavy":
 		anim_player.play("sword_side_heavy2")

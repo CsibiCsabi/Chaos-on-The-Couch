@@ -8,6 +8,7 @@ extends Node2D
 
 func _ready() -> void:
 	select_random_map()
+	
 	if Szorp.chosen_gamemode == Szorp.Gamemode.infected or Szorp.infectedMaps:
 		print("infectedunk van")
 		applyMapMutator()
@@ -55,7 +56,7 @@ func applyMapMutator():
 
 func select_random_map():
 	var map = Szorp.map_paths.pick_random()
-	var scene = load(map).instantiate()
+	var scene = load("res://maps/showdown_maps/map1.tscn").instantiate()
 	$MapContainer.add_child(scene)
 	var p1pos = scene.get_node("player1position").global_position 
 	var p2pos = scene.get_node("player2position").global_position 

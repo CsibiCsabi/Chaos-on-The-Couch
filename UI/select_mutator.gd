@@ -12,7 +12,7 @@ func show_random_mutators(count : int):
 	var keys = Mutator_Library.all_mutators.keys()
 	keys.shuffle()
 	for i in range(min(keys.size(), count)):
-		var key = keys[i]
+		var key = "Stinger"
 		var mutator = Mutator_Library.all_mutators[key]
 		var card = mutator_card_scene.instantiate()
 		card.setMutator(mutator)
