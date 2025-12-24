@@ -90,6 +90,7 @@ func setp2Color(color):
 	p2color = color
 
 func i_lost(_loser : int):
+	await get_tree().create_timer(1).timeout
 	loser = _loser
 	if loser == 1:
 		p2points+=1

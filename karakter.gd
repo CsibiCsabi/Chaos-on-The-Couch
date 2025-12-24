@@ -52,9 +52,31 @@ func process_dash_frame():
 
 func process_single_frame():
 	#check for attack (rn only thing)
+	for key in inputBuffers.keys():
+			if inputBuffers[key] > 0:
+				inputBuffers[key] -= 1
+	if one_way_frames > 0:
+		one_way_frames -= 1
+		if one_way_frames == 0:
+			collision_mask |= (1 << 3)
+	if poison_frames > 0:
+		poison_frames -= 1
+		if poison_frames == 0:
+			take_off_poision()
+	if poison_wait_frames > 0:
+		poison_wait_frames -= 1
+		if poison_wait_frames == 0 and poisonsToBeAdded > 0:
+			apply_poison(poisonDamage)
 	if stun_frames > 0:
 		process_stun_frame()
 		return
+	
+	if slow_frames > 0:
+		# TODO: add slow effect
+		slow_frames -= 1
+		if slow_frames == 0:
+			speed = mySpeed
+	
 	if current_attack:
 		process_attack_frame()
 	if dash_frames > 0:
@@ -63,8 +85,50 @@ func process_single_frame():
 	if sting_frames > 0:
 		sting_frames -= 1
 	if before_sting_frames > 0: #BEING stung
-		print("whatchu doin'?")
 		process_being_stung()
+	#gravity
+	var gravity_per_frame = get_gravity() / 60
+	#TODO: test if i stay on one way platform, do i get rlly high gravity?
+	if not is_on_floor() and currentState != PlayerState.Dash:
+			velocity += gravity_per_frame * gravityMultiplier * (2 if down else 1)
+	#check for airborne
+	if on_floor:
+		$legs.disabled = false
+		jumpCount = 0
+		nairCount = 0
+	else:
+		$legs.disabled = true
+	#jump
+	if inputBuffers["p"+str(player_id)+"jump"] > 0 and jumpCount < maxJumps and currentState != PlayerState.Attack:
+		inputBuffers["p"+str(player_id)+"jump"] = 0
+		#TODO if vel.y > 0 => ve.y = 0; vel.y += jump force
+		velocity.y = jump_force
+		jumpCount+=1
+	#get direction
+	var direction = 0
+	if usingController:
+		direction = Input.get_joy_axis(controller_id, JOY_AXIS_LEFT_X)
+	else:
+		direction = Input.get_axis("p"+str(player_id)+"left", "p"+str(player_id)+"right")
+	
+	#movement
+	if canDash and inputBuffers["p"+str(player_id)+"dash"] > 0 and currentState != PlayerState.Dash and currentState != PlayerState.Attack:
+		inputBuffers["p"+str(player_id)+"dash"] = 0
+		knock_back_frames = 0
+		dash()
+		return
+	if (direction > contiDeadzone or direction < (-1*contiDeadzone)) and canMove:
+		sprite.scale.x = -1 if direction < 0 else 1
+		facingLeft = direction <= 0
+		velocity.x = direction * speed
+	else:
+		velocity.x = move_toward(velocity.x, 0, speed/60)
+	
+	if knock_back_frames> 0:
+		knock_back_frames -= 1
+		velocity = trampoline_force
+	
+	update_state(direction)
 
 func process_being_stung():
 	before_sting_frames -=1
@@ -120,7 +184,6 @@ func process_frame_timers():
 	pass
 
 func end_stun():
-	knock_back_timer = 0
 	canMove = true
 	canAttack = true
 	hitSomething = false
@@ -148,16 +211,16 @@ func _ready() -> void:
 	add_to_group("player"+str(player_id))
 	label.text = "Player "+str(player_id)+" HP: "+str(hp)
 	inputBuffers = {
-	("p"+str(player_id)+"attack") : 0.0,
-	("p"+str(player_id)+"dash") : 0.0,
-	("p"+str(player_id)+"jump") : 0.0,
-	("p"+str(player_id)+"heavy") : 0.0
+	("p"+str(player_id)+"attack") : 0,
+	("p"+str(player_id)+"dash") : 0,
+	("p"+str(player_id)+"jump") : 0,
+	("p"+str(player_id)+"heavy") : 0
 	}
 	#controllers
 	var controllers = Input.get_connected_joypads()
-	#if controllers.size() >= player_id:
-	#	controller_id = controllers[player_id-1] 
-	#	usingController = true
+	if controllers.size() >= player_id:
+		controller_id = controllers[player_id-1] 
+		usingController = true
 	inputs = {
 		"attack" : JOY_BUTTON_X,
 		"jump" : JOY_BUTTON_A,
@@ -228,8 +291,7 @@ var canAttack = true;
 var hitSomething = false
 var attackCooldown = 0.2
 var missPunish = 0.2
-var attack_buffer = 0
-var input_buffer_time = 0.2
+var input_buffer_frames = 12
 var justJumped = false
 var inputBuffers = {}
 var nairCount = 0
@@ -266,18 +328,18 @@ var stingCooldown = 300
 #slow
 var slow = 0 # your slow effect
 var mySpeed = speed 
-var slowTimer = 0
-var slowTime = 1
+var slow_frames = 0
+var slow_time = 60
 
 #one_way thingy
 var down_time = 0.06 # how long to go down a one way coll
-var one_way_timer = 0
-var one_way_time = 0.1
+var one_way_frames = 0
+var one_way_time = 6
 var falling_through_one_way = false
 
 #trampoline
-var knock_back_time = 0.2
-var knock_back_timer = 0
+var knock_back_time = 12
+var knock_back_frames = 0
 var trampoline_force = Vector2(0,0)
 
 var down = false # fast fallhoz
@@ -305,13 +367,13 @@ func _input(event):
 	if usingController:
 		var jump = Input.is_joy_button_pressed(controller_id, inputs["jump"])
 		if Input.is_joy_button_pressed(controller_id, inputs["heavy"]):
-			inputBuffers["p"+str(player_id)+"heavy"] = input_buffer_time
+			inputBuffers["p"+str(player_id)+"heavy"] = input_buffer_frames
 		if Input.is_joy_button_pressed(controller_id, inputs["attack"]):
-			inputBuffers["p"+str(player_id)+"attack"] = input_buffer_time
+			inputBuffers["p"+str(player_id)+"attack"] = input_buffer_frames
 		if jump and not justJumped:
-			inputBuffers["p"+str(player_id)+"jump"] = input_buffer_time
+			inputBuffers["p"+str(player_id)+"jump"] = input_buffer_frames
 		if Input.is_joy_button_pressed(controller_id, inputs["dash"]):
-			inputBuffers["p"+str(player_id)+"dash"] = input_buffer_time
+			inputBuffers["p"+str(player_id)+"dash"] = input_buffer_frames
 		#no doublejump exhaust
 		justJumped = jump
 		#ONE WAY COLLISION
@@ -334,7 +396,7 @@ func _input(event):
 	else:
 		for i in inputBuffers.keys():
 			if event.is_action_pressed(i):
-				inputBuffers[i] = input_buffer_time
+				inputBuffers[i] = input_buffer_frames
 		#one_way_coll
 		if Input.is_action_just_pressed("p"+str(player_id)+"down"):
 			await get_tree().create_timer(down_time).timeout
@@ -349,88 +411,34 @@ func _input(event):
 				collision_mask |= (1 << 3)
 			down = false
 
-
+var poison_frames = 0
+var poison_time = 12
+var poison_wait_frames = 0
+var poison_wait_time = 12
 func apply_poison(dmg : float):
+	print("MEGINT Print DeBUG HELL")
 	poisonsToBeAdded -=1
-	canApplyPoison = false
-	hp += dmg
+	poison_frames = poison_time
 	sprite.self_modulate = Color.GREEN
-	await get_tree().create_timer(0.3).timeout
-	sprite.self_modulate = color
-	await get_tree().create_timer(0.2).timeout
-	canApplyPoison = true
+	hp += dmg
 	label.text = "Player "+str(player_id)+" HP: "+str(hp)
-	return
+
+func take_off_poision():
+	poison_wait_frames = poison_wait_time
+	sprite.self_modulate = color
+	
 
 
 func _physics_process(delta: float) -> void:
-	if one_way_timer >= 0:
-		one_way_timer -= delta
-		if one_way_timer < 0:
-			collision_mask |= (1 << 3)
-	if poisonsToBeAdded > 0 and canApplyPoison:
-		apply_poison(poisonDamage)
-	if slowTimer > 0:
-		slowTimer -= delta
-		if slowTimer < 0:
-			speed = mySpeed
-	if stun_frames > 0:
-		print()
-	else: #no stun
-		for key in inputBuffers.keys():
-			if inputBuffers[key] > 0:
-				inputBuffers[key] -= delta
-		
-		var on_one_way_floor = false
-		for ray in floor_raycasts: 
-			if ray.is_colliding() and velocity.y >= 0:
-				var collider = ray.get_collider()
-				if collider and collider.is_in_group("one_way_platforms"):
-					on_one_way_floor = true 
-		
-		on_floor = on_one_way_floor or is_on_floor()
-		 
-		# Add the gravity.
-		if not is_on_floor() and currentState != PlayerState.Dash:
-			velocity += get_gravity() * delta * gravityMultiplier * (2 if down else 1)
+	#one way floor handling STAYS HERE
+	var on_one_way_floor = false
+	for ray in floor_raycasts:
+		if ray.is_colliding() and velocity.y >= 0:
+			var collider = ray.get_collider()
+			if collider and collider.is_in_group("one_way_platforms"):
+				on_one_way_floor = true 
+	on_floor = on_one_way_floor or is_on_floor()
 
-		
-		if on_floor:
-			$legs.disabled = false
-			jumpCount = 0
-			nairCount = 0
-		else:
-			$legs.disabled = true
-			
-		# Handle jump.
-		if inputBuffers["p"+str(player_id)+"jump"] > 0 and jumpCount < maxJumps and currentState != PlayerState.Attack:
-			inputBuffers["p"+str(player_id)+"jump"] = 0
-			velocity.y = jump_force
-			jumpCount+=1
-		#movement
-		var direction = 0
-		if usingController:
-			direction = Input.get_joy_axis(controller_id, JOY_AXIS_LEFT_X)
-		else:
-			direction = Input.get_axis("p"+str(player_id)+"left", "p"+str(player_id)+"right")
-		if canDash and inputBuffers["p"+str(player_id)+"dash"] > 0 and currentState != PlayerState.Dash and currentState != PlayerState.Attack:
-			inputBuffers["p"+str(player_id)+"dash"] = 0
-			knock_back_timer = 0
-			dash()
-			return
-		if (direction > contiDeadzone or direction < (-1*contiDeadzone)) and canMove:
-			sprite.scale.x = -1 if direction < 0 else 1
-			facingLeft = direction <= 0
-			velocity.x = direction * speed
-		else:
-			velocity.x = move_toward(velocity.x, 0, speed)
-		
-		if knock_back_timer > 0:
-			knock_back_timer -= delta
-			velocity = trampoline_force
-		
-		#State Update
-		update_state(direction)
 	move_and_slide()
 
 func disable_hitboxes():
@@ -452,7 +460,6 @@ func _disable_deferred():
 
 func die():
 	Szorp.i_lost(player_id)
-	queue_free()
 
 func spike_hit():
 	#hit(AttackData.new("spike", 0.5, Vector2(0,-500)), 10,0,0,0)
@@ -465,12 +472,11 @@ func hit(data : AttackData, _str : int, _poison : float, _stinger : int, _slow :
 	else:
 		change_state(PlayerState.Hurt, "hurt")
 		if _slow > 0:
-			
 			speed = mySpeed - _slow
-			slowTimer = slowTime
+			slow_frames = slow_time
 		#stun mechanic
 		collision_mask &= ~(1 << 3)
-		one_way_timer = one_way_time
+		one_way_frames = one_way_time
 		sprite.scale.x = 1 if data.force.x > 0 else -1
 		facingLeft = data.force.x < 0
 		
@@ -489,6 +495,7 @@ func hit(data : AttackData, _str : int, _poison : float, _stinger : int, _slow :
 		if _poison != 0:
 			poisonsToBeAdded = 4
 			poisonDamage = _poison
+			apply_poison(poisonDamage)
 		if _stinger != 0:
 			sting(_stinger)
 		return
@@ -542,7 +549,7 @@ func change_state(new_state: PlayerState, anim_name: String):
 func trampoline(force : Vector2):
 	velocity = force
 	trampoline_force = force
-	knock_back_timer = knock_back_time
+	knock_back_frames = knock_back_time
 
 func jump(force : Vector2) ->void:
 	velocity = force
