@@ -4,6 +4,10 @@ extends CharacterBody2D
 var last_processed_frame : int = -1
 var current_attack : AttackData = null
 var current_attack_frame : int = -1
+var frames_before_disabling_one_way_collision = 0
+var time_before_disabling_one_way_collision = 6
+
+const FPS = 60.0
 
 func update_frame(global_frame : int):
 	if last_processed_frame == -1:
@@ -15,50 +19,11 @@ func update_frame(global_frame : int):
 	for i in range(passed_frames):
 		process_single_frame()
 
-const FPS = 60.0
-
-func process_stun_frame():
-	stun_frames -= 1
-	
-	velocity.x = move_toward(velocity.x, 0, 1000/FPS)
-	var gravity_per_frame = get_gravity() / FPS
-	
-	velocity += gravity_per_frame * gravityMultiplier
-	
-	if stun_frames == 0:
-		end_stun()
-
-func process_attack_frame():
-	current_attack_frame += 1
-	enable_hitbox_for_attack(current_attack.name, current_attack_frame)
-	
-	var fd = current_attack.frame_data
-	# TODO: USE current_attack variable and change hierarchy in karakter body like: area2D: atackname/ collision_shape: number => how many attack sprites? > dynamic change
-	var phase = fd.get_phase(current_attack_frame)
-	var has_hitbox = current_attack.attack_anim.get_hitbox_index_for_frame(current_attack_frame) >= 1
-	if has_hitbox:
-		print("Frame ", current_attack_frame, " (", phase, "): 🟥 HITBOX")
-	elif phase == "active":
-		print("Frame ", current_attack_frame, " (", phase, "): ⬜ NO HITBOX (bug?)")
-	if current_attack_frame > fd.total:
-		end_attack()
-
-func process_dash_frame():
-	dash_frames -=1
-	if dash_frames == 0:
-		canDash = true
-
-	
-
 func process_single_frame():
 	#check for attack (rn only thing)
 	for key in inputBuffers.keys():
-			if inputBuffers[key] > 0:
-				inputBuffers[key] -= 1
-	if one_way_frames > 0:
-		one_way_frames -= 1
-		if one_way_frames == 0:
-			collision_mask |= (1 << 3)
+		if inputBuffers[key] > 0:
+			inputBuffers[key] -= 1
 	if poison_frames > 0:
 		poison_frames -= 1
 		if poison_frames == 0:
@@ -67,10 +32,25 @@ func process_single_frame():
 		poison_wait_frames -= 1
 		if poison_wait_frames == 0 and poisonsToBeAdded > 0:
 			apply_poison(poisonDamage)
+	if frames_before_disabling_one_way_collision > 0:
+		frames_before_disabling_one_way_collision -= 1
+		if frames_before_disabling_one_way_collision == 0:
+			collision_mask &= ~(1 << 3)
+	"""
+	if one_way_disabled_frames > 0:
+		if frames_before_disabling_one_way_collision > 0:
+			frames_before_disabling_one_way_collision -= 1
+		else:
+			one_way_disabled_frames -= 1
+			collision_mask &= ~(1 << 3)
+			if one_way_disabled_frames == 0:
+				frames_before_disabling_one_way_collision = time_before_disabling_one_way_collision
+				collision_mask |= (1 << 3)
+	"""
+	#STUN IS HERE
 	if stun_frames > 0:
 		process_stun_frame()
 		return
-	
 	if slow_frames > 0:
 		# TODO: add slow effect
 		slow_frames -= 1
@@ -87,7 +67,7 @@ func process_single_frame():
 	if before_sting_frames > 0: #BEING stung
 		process_being_stung()
 	#gravity
-	var gravity_per_frame = get_gravity() / 60
+	var gravity_per_frame = get_gravity() / FPS
 	#TODO: test if i stay on one way platform, do i get rlly high gravity?
 	if not is_on_floor() and currentState != PlayerState.Dash:
 			velocity += gravity_per_frame * gravityMultiplier * (2 if down else 1)
@@ -122,13 +102,42 @@ func process_single_frame():
 		facingLeft = direction <= 0
 		velocity.x = direction * speed
 	else:
-		velocity.x = move_toward(velocity.x, 0, speed/60)
+		velocity.x = move_toward(velocity.x, 0, FPS)
 	
 	if knock_back_frames> 0:
 		knock_back_frames -= 1
 		velocity = trampoline_force
 	
 	update_state(direction)
+
+func process_stun_frame():
+	stun_frames -= 1
+	
+	velocity.x = move_toward(velocity.x, 0, 1000/FPS)
+	var gravity_per_frame = get_gravity() / FPS
+	
+	velocity += gravity_per_frame * gravityMultiplier
+	
+	if stun_frames == 0:
+		end_stun()
+
+func process_attack_frame():
+	current_attack_frame += 1
+	enable_hitbox_for_attack(current_attack.name, current_attack_frame)
+	
+	var fd = current_attack.frame_data
+	# TODO: USE current_attack variable and change hierarchy in karakter body like: area2D: atackname/ collision_shape: number => how many attack sprites? > dynamic change
+	var phase = fd.get_phase(current_attack_frame)
+	var has_hitbox = current_attack.attack_anim.get_hitbox_index_for_frame(current_attack_frame) >= 1
+
+	if current_attack_frame > fd.total:
+		end_attack()
+
+func process_dash_frame():
+	dash_frames -=1
+	if dash_frames == 0:
+		canDash = true
+
 
 func process_being_stung():
 	before_sting_frames -=1
@@ -335,7 +344,6 @@ var slow_time = 60
 var down_time = 0.06 # how long to go down a one way coll
 var one_way_frames = 0
 var one_way_time = 6
-var falling_through_one_way = false
 
 #trampoline
 var knock_back_time = 12
@@ -363,6 +371,7 @@ func apply_mutators(mutators):
 			box.theme = preload("res://themes/rare_theme.tres")
 		$CanvasLayer/Mutators.add_child(box)
 
+
 func _input(event):
 	if usingController:
 		var jump = Input.is_joy_button_pressed(controller_id, inputs["jump"])
@@ -378,15 +387,8 @@ func _input(event):
 		justJumped = jump
 		#ONE WAY COLLISION
 		if Input.get_joy_axis(controller_id, JOY_AXIS_LEFT_Y) > contiDeadzone:
-			await get_tree().create_timer(down_time).timeout
 			if currentState == PlayerState.Idle or currentState == PlayerState.Run or currentState == PlayerState.Jump: 
-				collision_mask &= ~(1 << 3)
-			else:
-				collision_mask |= (1 << 3)
-		if Input.get_joy_axis(controller_id, JOY_AXIS_LEFT_Y) <  contiDeadzone:
-			collision_mask |= (1 << 3)
-			await get_tree().create_timer(down_time).timeout
-			collision_mask |= (1 << 3)
+				print("IDE MEG KELL IRNI")
 			
 		#fastfall
 		if Input.get_joy_axis(controller_id, JOY_AXIS_LEFT_Y) > contiDeadzone:
@@ -398,17 +400,16 @@ func _input(event):
 			if event.is_action_pressed(i):
 				inputBuffers[i] = input_buffer_frames
 		#one_way_coll
-		if Input.is_action_just_pressed("p"+str(player_id)+"down"):
-			await get_tree().create_timer(down_time).timeout
-			if currentState == PlayerState.Idle or currentState == PlayerState.Run or currentState == PlayerState.Jump: 
-				collision_mask &= ~(1 << 3)
-		
 		#fastfall
+		if Input.is_action_just_pressed("p"+str(player_id)+"down"):
+			if currentState == PlayerState.Idle or currentState == PlayerState.Run or currentState == PlayerState.Jump: 
+				frames_before_disabling_one_way_collision = time_before_disabling_one_way_collision
+		elif Input.is_action_just_released("p"+str(player_id)+"down"):
+			collision_mask |= (1 << 3)
+			frames_before_disabling_one_way_collision = 0
 		if Input.is_action_pressed("p"+str(player_id)+"down"):
 			down = true
 		else:
-			if not falling_through_one_way:
-				collision_mask |= (1 << 3)
 			down = false
 
 var poison_frames = 0
@@ -851,7 +852,7 @@ func _on_dodge_body_entered(body: Node2D) -> void:
 	var dashIrany = Vector2(0,0)
 	dashIrany = Vector2(horizontal * pushDodge * 1.2, vertical* pushDodge)
 	body.hit(AttackData.new("dodge", attackDodge, dashIrany, stunDodge), strength, 0, 0, 0)
-		
+
 
 
 func _on_sword_heavy_down_body_entered(body: Node2D) -> void:
@@ -869,9 +870,10 @@ func _on_sword_heavy_down_body_entered(body: Node2D) -> void:
 
 func _on_one_way_pls_work_body_entered(body: Node2D) -> void:
 	if body.is_in_group("one_way_platforms"):
+		print("szkíbodi")
 		collision_mask &= ~(1 << 3)
-		falling_through_one_way = true
-		await  get_tree().create_timer(0.2).timeout
-		collision_mask |= ~(1 << 3)
-		falling_through_one_way = false
-		
+
+
+func _on_one_way_pls_work_body_exited(body: Node2D) -> void:
+	if body.is_in_group("one_way_platforms"):
+		collision_mask |= (1 << 3)

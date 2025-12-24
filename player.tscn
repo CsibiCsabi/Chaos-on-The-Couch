@@ -1219,6 +1219,7 @@ size = Vector2(12, 22)
 
 [node name="player" type="CharacterBody2D"]
 collision_mask = 12
+platform_floor_layers = 4294901769
 script = ExtResource("1_vie4p")
 mutator_box_scene = ExtResource("2_0jj5r")
 
@@ -1417,13 +1418,15 @@ disabled = true
 [node name="RayCast2D" type="RayCast2D" parent="."]
 position = Vector2(-8, 12)
 scale = Vector2(1, 0.240001)
-collision_mask = 9
+target_position = Vector2(0, 60)
+collision_mask = 12
 collide_with_areas = true
 
 [node name="RayCast2D2" type="RayCast2D" parent="."]
 position = Vector2(6, 12)
 scale = Vector2(1, 0.240001)
-collision_mask = 9
+target_position = Vector2(0, 60)
+collision_mask = 12
 collide_with_areas = true
 
 [node name="one_way_pls_work" type="Area2D" parent="."]
@@ -1445,3 +1448,4 @@ shape = SubResource("RectangleShape2D_vie4p")
 [connection signal="body_entered" from="Sprite2D/dodge" to="." method="_on_dodge_body_entered"]
 [connection signal="body_entered" from="Sprite2D/sword_heavy_down" to="." method="_on_sword_heavy_down_body_entered"]
 [connection signal="body_entered" from="one_way_pls_work" to="." method="_on_one_way_pls_work_body_entered"]
+[connection signal="body_exited" from="one_way_pls_work" to="." method="_on_one_way_pls_work_body_exited"]
