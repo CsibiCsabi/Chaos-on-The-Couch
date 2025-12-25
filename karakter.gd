@@ -125,7 +125,7 @@ func process_attack_frame():
 	current_attack_frame += 1
 	enable_hitbox_for_attack(current_attack.name, current_attack_frame)
 	
-	var fd = current_attack.frame_data
+	var fd = current_attack.attack_anim.frame_data
 	# TODO: USE current_attack variable and change hierarchy in karakter body like: area2D: atackname/ collision_shape: number => how many attack sprites? > dynamic change
 	var phase = fd.get_phase(current_attack_frame)
 	var has_hitbox = current_attack.attack_anim.get_hitbox_index_for_frame(current_attack_frame) >= 1
@@ -172,7 +172,7 @@ func end_attack():
 func enable_hitbox_for_attack(attack_name: String, frame_in_attack: int):
 	# Get the AttackAnimation for this attack
 	var attack = attacks[attack_name]
-	if not attack.frame_data.is_in_active(frame_in_attack):
+	if not attack.attack_anim.frame_data.is_in_active(frame_in_attack):
 		return
 	var anim : AttackAnimation = attack.attack_anim
 	
@@ -250,7 +250,7 @@ func _ready() -> void:
 	mySpeed = speed
 	sprite.self_modulate = color
 	attacks = {
-		"sword_side" : AttackData.new("sword_side", 1,Vector2(400,-100), FrameData.new(12,6,20,30), AttackAnimation.new(FrameData.new(12,6,20,30), [],[1],[])),
+		"sword_side" : AttackData.new("sword_side", 1,Vector2(400,-100), AttackAnimation.new(FrameData.new(12,6,20,30), [],[1],[])),
 	}
 
 
@@ -488,9 +488,9 @@ func hit(data : AttackData, _str : int, _poison : float, _stinger : int, _slow :
 			var forceY = data.force.y * (1 + hp / (defense*2))
 			velocity = Vector2(forceX, forceY)
 		if data.name in stunExceptionAttacks:
-			stun_frames = data.frame_data.hitstun
+			stun_frames = data.attack_anim.frame_data.hitstun
 		else:
-			stun_frames = int(data.frame_data.hitstun * (1 + hp / (defense*2)))
+			stun_frames = int(data.attack_anim.frame_data.hitstun * (1 + hp / (defense*2)))
 		hp += data.damage * _str / (defense / 100)
 		label.text = "Player "+str(player_id)+" HP: "+str(hp)
 		if _poison != 0:
@@ -516,7 +516,7 @@ func hit_opponent(body : Node2D, data : AttackData):
 	#TODO
 	var force = Vector2(data.force.x * (-1 if facingLeft else 1), data.force.y)
 	# return AttackData.new(data.name, dmg, force, data.stunTime)
-	body.hit(AttackData.new(data.name, data.damage, force, data.frame_data, data.attack_anim), strength, poison, (stinger if sting_frames == 0 else 0), (1.5*slow if "heavy" in data.name else slow))
+	body.hit(AttackData.new(data.name, data.damage, force, data.attack_anim), strength, poison, (stinger if sting_frames == 0 else 0), (1.5*slow if "heavy" in data.name else slow))
 
 
 
@@ -661,9 +661,6 @@ func attack(heavy : bool) -> void:
 		nairCount += 1
 	var weight = "_heavy" if heavy else ""
 	var attack_data = attacks[weapon+"_"+attackType + weight] 
-	print("This attack has ", attack_data.frame_data.total, " total frames")
-	print("Hitbox active from frame ", attack_data.frame_data.hitbox_start, 
-		  " to ", attack_data.frame_data.hitbox_end)
 	var attack = weapon+"_"+attackType + weight
 	start_attack(attack)
 
