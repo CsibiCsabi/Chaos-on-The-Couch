@@ -27,7 +27,6 @@ func _physics_process(delta: float) -> void:
 	# Print FPS every second
 	var current_time = Time.get_ticks_msec() / 1000.0
 	if current_time - last_time >= 1.0:
-		print("ACTUAL FPS: ", frame_counter, " (should be 60)")
 		frame_counter = 0
 		last_time = current_time
 	
@@ -56,7 +55,7 @@ func applyMapMutator():
 
 func select_random_map():
 	var map = Szorp.map_paths.pick_random()
-	var scene = load("res://maps/showdown_maps/trampoline_map_3.tscn").instantiate()
+	var scene = load("res://maps/showdown_maps/map1.tscn").instantiate()
 	$MapContainer.add_child(scene)
 	var p1pos = scene.get_node("player1position").global_position 
 	var p2pos = scene.get_node("player2position").global_position 

@@ -76,7 +76,7 @@ func add_built_in_mutators():
 	#poison # 11.
 	mutator = Mutator.new("Stinky Sword", "Apply poison to your enemy upon hitting them!", "Why is it so smelly in here?", rarity.rare, func(player):
 			player.poison += 1
-			)
+			)	
 	all_mutators[mutator.name] = mutator
 	#stinger # 12.
 	mutator = Mutator.new("Stinger", "Sting your opponent after hitting them!\nCooldown: 5s", "Come closer, it won't hurt!", rarity.rare, func(player):

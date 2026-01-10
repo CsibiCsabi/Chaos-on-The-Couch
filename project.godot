@@ -18,6 +18,7 @@ config/features=PackedStringArray("4.5", "GL Compatibility")
 
 Szorp="*res://szorp.gd"
 Mutator_Library="*res://mutator/mutator_library.gd"
+AnimLibrary="*res://attack_animation_library.gd"
 
 [display]
 

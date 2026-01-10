@@ -36,17 +36,6 @@ func process_single_frame():
 		frames_before_disabling_one_way_collision -= 1
 		if frames_before_disabling_one_way_collision == 0:
 			collision_mask &= ~(1 << 3)
-	"""
-	if one_way_disabled_frames > 0:
-		if frames_before_disabling_one_way_collision > 0:
-			frames_before_disabling_one_way_collision -= 1
-		else:
-			one_way_disabled_frames -= 1
-			collision_mask &= ~(1 << 3)
-			if one_way_disabled_frames == 0:
-				frames_before_disabling_one_way_collision = time_before_disabling_one_way_collision
-				collision_mask |= (1 << 3)
-	"""
 	#STUN IS HERE
 	if stun_frames > 0:
 		process_stun_frame()
@@ -110,6 +99,11 @@ func process_single_frame():
 	
 	update_state(direction)
 
+func update_attack_sprite():
+	if current_attack and current_attack.attack_anim:
+		var sprite = current_attack.attack_anim.get_sprite_for_frame(current_attack_frame)
+		if sprite:
+			$Sprite2D.texture = sprite
 func process_stun_frame():
 	stun_frames -= 1
 	
@@ -123,12 +117,19 @@ func process_stun_frame():
 
 func process_attack_frame():
 	current_attack_frame += 1
-	enable_hitbox_for_attack(current_attack.name, current_attack_frame)
-	
+	update_attack_sprite()
 	var fd = current_attack.attack_anim.frame_data
 	# TODO: USE current_attack variable and change hierarchy in karakter body like: area2D: atackname/ collision_shape: number => how many attack sprites? > dynamic change
 	var phase = fd.get_phase(current_attack_frame)
 	var has_hitbox = current_attack.attack_anim.get_hitbox_index_for_frame(current_attack_frame) >= 1
+	if has_hitbox:
+		enable_hitbox_for_attack(current_attack.name, current_attack_frame)
+	else:
+		disable_hitboxes()
+	var force = current_attack.attack_anim.get_movement_for_frame(current_attack_frame)
+	if force != Vector2.ZERO:
+		velocity.x = force.x * (-1 if facingLeft else 1)
+		velocity.y = force.y
 
 	if current_attack_frame > fd.total:
 		end_attack()
@@ -150,6 +151,8 @@ func process_being_stung():
 			before_sting_frames = waitTimeBeforeSting
 
 func start_attack(name : String):
+	print("attack start")
+	anim_player.stop()
 	if not canAttack or null != current_attack:
 		print("ERROR at start_attack")
 		return
@@ -157,17 +160,41 @@ func start_attack(name : String):
 	current_attack_frame = 0
 	canAttack = false
 	
-	anim_player.play(name)
+	#anim_player.play(name)
 	
 	print("attack started! ", name)
 # TODO:  TEST, convert stun/dash to frame 
+func get_next_attack(attack : AttackData) -> String:
+	if current_attack.next_attack == "active":
+		print("active inputting")
+		var side = get_active_input()
+		print(attack.name + side)
+		current_attack = null
+		hit_something = false
+		return attack.name + side
+	var holder = current_attack.next_attack
+	current_attack = null
+	hit_something = false
+	return holder
+
 
 func end_attack():
-	current_attack = null
-	current_attack_frame = -1
-	canMove = true
 	canAttack = true
+	current_attack_frame = -1
+	
+	if current_attack.next_attack != "" and hit_something:
+		var next_attack = get_next_attack(current_attack)
+		start_attack(next_attack)
+		return
+	hit_something = false
+	current_attack = null
+	canMove = true
+	
 	disable_hitboxes()
+	if (velocity.x != 0):
+		change_state(PlayerState.Run, "run")
+	else:
+		change_state(PlayerState.Idle, "idle")
 
 func enable_hitbox_for_attack(attack_name: String, frame_in_attack: int):
 	# Get the AttackAnimation for this attack
@@ -187,7 +214,6 @@ func enable_hitbox_for_attack(attack_name: String, frame_in_attack: int):
 		if hitbox:
 			hitbox.disabled = false
 			hitbox.get_parent().monitoring = true
-			print("Enabled hitbox: ", hitbox_path, " for frame ", frame_in_attack)
 
 func process_frame_timers():
 	pass
@@ -195,7 +221,7 @@ func process_frame_timers():
 func end_stun():
 	canMove = true
 	canAttack = true
-	hitSomething = false
+	hit_something = false
 	facingLeft = !facingLeft
 	sprite.scale.x = -1 if facingLeft else 1
 	if abs(velocity.x) > 0.3 and usingController:
@@ -236,12 +262,10 @@ func _ready() -> void:
 		"dash" : JOY_BUTTON_LEFT_SHOULDER,
 		"heavy" : JOY_BUTTON_Y
 		}
-	
 	if player_id == 1:
 		$CanvasLayer.layer = 2
 		color = Szorp.p1color
 		apply_mutators(Szorp.p1mutators)
-		
 	else:
 		$CanvasLayer/Label.global_position.y += 40
 		$CanvasLayer/Mutators.global_position.y += 50
@@ -250,9 +274,19 @@ func _ready() -> void:
 	mySpeed = speed
 	sprite.self_modulate = color
 	attacks = {
-		"sword_side" : AttackData.new("sword_side", 1,Vector2(400,-100), AttackAnimation.new(FrameData.new(12,6,20,30), [],[1],[])),
+		"sword_side" : AttackData.new("sword_side", 1,Vector2(400,-100), AnimLibrary.anims["sword_side"]),
+		"sword_neutral" : AttackData.new("sword_neutral", 1, Vector2(250, -200), AnimLibrary.anims["sword_neutral"]),
+		"sword_down" : AttackData.new("sword_down", 1, Vector2(400,-250), AnimLibrary.anims["sword_down"]),
+		"sword_nair" : AttackData.new("sword_nair", 1, Vector2(300, -300), AnimLibrary.anims["sword_nair"]),
+		"sword_dair" : AttackData.new("sword_dair", 1, Vector2(0,250), AnimLibrary.anims["sword_dair"]),
+		"sword_neutral_heavy" : AttackData.new("sword_neutral_heavy", 1, Vector2(0, -250), AnimLibrary.anims["sword_neutral_heavy"], "sword_neutral_heavy2"),
+		"sword_neutral_heavy2" : AttackData.new("sword_neutral_heavy2", 1, Vector2(400, 30), AnimLibrary.anims["sword_neutral_heavy2"]),
+		"sword_side_heavy" : AttackData.new("sword_side_heavy", 1, Vector2(0,-100), AnimLibrary.anims["sword_side_heavy"], "sword_side_heavy2"),
+		"sword_side_heavy2" : AttackData.new("sword_side_heavy2", 1, Vector2(0,-100), AnimLibrary.anims["sword_side_heavy2"], "active"),
+		"sword_side_heavy2_active1" : AttackData.new("sword_side_heavy2_active1", 1, Vector2(600, 0), AnimLibrary.anims["sword_side_heavy2_active1"]),
+		"sword_side_heavy2_active2" : AttackData.new("sword_side_heavy2_active2", 1, Vector2(-600, 0), AnimLibrary.anims["sword_side_heavy2_active2"]),
+		"sword_down_heavy" : AttackData.new("sword_down_heavy", 1, Vector2(50, 200), AnimLibrary.anims["sword_down_heavy"]),
 	}
-
 
 var strength : float = 10
 var defense : float = 100
@@ -297,7 +331,7 @@ var horizontalSzorzo = 1
 var weapon = "sword"
 var attackType
 var canAttack = true;
-var hitSomething = false
+var hit_something = false
 var attackCooldown = 0.2
 var missPunish = 0.2
 var input_buffer_frames = 12
@@ -389,7 +423,9 @@ func _input(event):
 		if Input.get_joy_axis(controller_id, JOY_AXIS_LEFT_Y) > contiDeadzone:
 			if currentState == PlayerState.Idle or currentState == PlayerState.Run or currentState == PlayerState.Jump: 
 				print("IDE MEG KELL IRNI")
-			
+		if not Input.is_joy_button_pressed(controller_id, inputs["jump"]):
+			if velocity.y < 0:
+				velocity.y = 0
 		#fastfall
 		if Input.get_joy_axis(controller_id, JOY_AXIS_LEFT_Y) > contiDeadzone:
 			down = true
@@ -411,6 +447,10 @@ func _input(event):
 			down = true
 		else:
 			down = false
+		#TODO: break jump momentum
+		if Input.is_action_just_released("p"+str(player_id)+"jump"):
+			if velocity.y < 0:
+				velocity.y = 0
 
 var poison_frames = 0
 var poison_time = 12
@@ -522,7 +562,7 @@ func hit_opponent(body : Node2D, data : AttackData):
 
 func update_state(direction: float) -> void:
 	if currentState == PlayerState.Attack:
-		attacking()
+		return
 	elif currentState == PlayerState.Dash:
 		dash_move()
 	elif inputBuffers["p"+str(player_id)+"heavy"] > 0 and canAttack:
@@ -592,6 +632,19 @@ func finishing():
 		finisher = false
 		next = true
 		anim_player.play("sword_side_heavy_finish2")
+
+func get_active_input() -> String:
+	var activeInput
+	print("getting active input...")
+	if usingController:
+		activeInput = "left" if Input.get_joy_axis(controller_id, JOY_AXIS_LEFT_X) < (-1 * contiDeadzone) else "right"
+	else:
+		activeInput = "left" if Input.get_axis("p"+str(player_id)+"left", "p"+str(player_id)+"right") < 0 else "right"
+	if (facingLeft and activeInput == "left") or (not facingLeft and activeInput == "right"):
+		return "_active1"
+	else:
+		return "_active2"
+
 
 var second = false
 func down_heavy_2():
@@ -664,19 +717,6 @@ func attack(heavy : bool) -> void:
 	var attack = weapon+"_"+attackType + weight
 	start_attack(attack)
 
-func attacking()->void:
-	var t = $AnimationPlayer.current_animation_position
-	var attack = weapon+"_"+attackType
-	match attack:
-		"sword_side":
-			if 0.2 < t and t < 0.3:
-				velocity.x = (-1 if facingLeft else 1) * 400
-		"sword_nair":
-			if 0.15 < t and t < 0.25:
-				velocity.y = -200
-		"sword_nair_heavy":
-			if 0.15 < t and t < 0.25:
-				velocity.y = -200
 
 
 func dash_move()->void:
@@ -728,12 +768,12 @@ func _on_animation_player_animation_finished(anim_name: StringName) -> void:
 	if anim_name in noAttackAnims:
 		return
 
-	if hitSomething and anim_name == "sword_side_heavy":
+	if hit_something and anim_name == "sword_side_heavy":
 		anim_player.play("sword_side_heavy2")
 		return
 		
 	
-	if hitSomething or attackType.contains("air"):
+	if hit_something or attackType.contains("air"):
 		canMove = true
 		canAttack = true
 	else:
@@ -744,7 +784,7 @@ func _on_animation_player_animation_finished(anim_name: StringName) -> void:
 		change_state(PlayerState.Run, "run")
 	else:
 		change_state(PlayerState.Idle, "idle")
-	hitSomething = false
+	hit_something = false
 	finisher = false
 	next = false
 	second = false
@@ -766,21 +806,21 @@ func _on_hurt_body_entered(body: Node2D) -> void:
 func _sword_neutral_hit(body: Node2D) -> void:
 	if body.is_in_group("player"+str(player_id)):
 		return
-	hitSomething = true
+	hit_something = true
 	hit_opponent(body, attacks["sword_neutral"])
 
 
 func _sword_side_hit(body: Node2D) -> void:
 	if body.is_in_group("player"+str(player_id)):
 		return
-	hitSomething = true
+	hit_something = true
 	hit_opponent(body, attacks["sword_side"])
 
 
 func sword_down_hit(body: Node2D) -> void:
 	if body.is_in_group("player"+str(player_id)):
 		return
-	hitSomething = true
+	hit_something = true
 	# dmg and force
 	hit_opponent(body, attacks["sword_down"])
 	
@@ -788,7 +828,7 @@ func sword_down_hit(body: Node2D) -> void:
 func sword_nair_hit(body: Node2D) -> void:
 	if body.is_in_group("player"+str(player_id)):
 		return
-	hitSomething = true
+	hit_something = true
 	# dmg and force
 	hit_opponent(body, attacks["sword_nair"])
 
@@ -798,7 +838,7 @@ func sword_nair_hit(body: Node2D) -> void:
 func dair_hit(body: Node2D) -> void:
 	if body.is_in_group("player"+str(player_id)):
 		return
-	hitSomething = true
+	hit_something = true
 	velocity.y = -300
 	# dmg and force
 	hit_opponent(body, attacks["sword_dair"])
@@ -820,25 +860,23 @@ var hitCount = 0
 func sword_heavy_neutral_hit(body: Node2D) -> void:
 	if body.is_in_group("player"+str(player_id)):
 		return
-	hitSomething = true
-	hitCount +=1
+	hit_something = true
 	# dmg and force
-	hit_opponent(body, attacks["sword_heavy_neutral"+str(hitCount)])
-	if (hitCount == 1):
-		anim_player.play("sword_neutral_heavy2")
-		
-	if hitCount >= 2:
-		hitCount = 0
+	hit_opponent(body, attacks["sword_neutral_heavy"])
 
+func _on_sword_neutral_heavy_2_body_entered(body: Node2D) -> void:
+	if body.is_in_group("player"+str(player_id)):
+		return
+	hit_something = true
+	# dmg and force
+	hit_opponent(body, attacks["sword_neutral_heavy2"])
 
 func _on_sword_heavy_side_body_entered(body: Node2D) -> void:
 	if body.is_in_group("player"+str(player_id)):
 		return
-	hitSomething = true
-	if finisher:
-		hit_opponent(body, attacks["sword_heavy_side2"])
-	else:
-		hit_opponent(body, attacks["sword_heavy_side1"])
+	hit_something = true
+	
+	hit_opponent(body, attacks["sword_side_heavy"])
 	
 
 
@@ -855,22 +893,21 @@ func _on_dodge_body_entered(body: Node2D) -> void:
 func _on_sword_heavy_down_body_entered(body: Node2D) -> void:
 	if body.is_in_group("player"+str(player_id)):
 		return
-	hitSomething = true
-	if second:
-		hit_opponent(body, attacks["sword_heavy_down2"])
-	else:
-		hit_opponent(body, attacks["sword_heavy_down1"])
-		
+	hit_something = true
+	hit_opponent(body, attacks["sword_down_heavy"])
+
 #PARKOUR
 #mi a gyasz
 
 
 func _on_one_way_pls_work_body_entered(body: Node2D) -> void:
 	if body.is_in_group("one_way_platforms"):
-		print("szkíbodi")
 		collision_mask &= ~(1 << 3)
 
 
 func _on_one_way_pls_work_body_exited(body: Node2D) -> void:
 	if body.is_in_group("one_way_platforms"):
 		collision_mask |= (1 << 3)
+
+
+	

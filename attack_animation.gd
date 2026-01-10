@@ -3,24 +3,53 @@ class_name AttackAnimation extends RefCounted
 
 var frame_data : FrameData  # REFERENCE, not copy!
 var sprites : Dictionary
-
-func _init(p_frame_data: FrameData, startup_sprites: Array, 
-		   active_sprites: Array, recovery_sprites: Array):
+var movement : Array
+var base_path = "res://anims/attack/"
+func _init(weapon_name : String, attack_name : String, p_frame_data: FrameData, _movement : Array):
 	frame_data = p_frame_data
-	sprites = {
-		"startup": startup_sprites,
-		"active": active_sprites,
-		"recovery": recovery_sprites
-	}
+	base_path = base_path.path_join(weapon_name).path_join(attack_name)
+	movement = _movement
+	print("Starting sprite load...")
+	load_sprites()
+
+func load_sprites():
+	sprites = {"startup" : [], "active" : [], "recovery" : []}
 	
-	# ENFORCE YOUR CONSTRAINT: frames >= sprites
-	assert(frame_data.startup >= startup_sprites.size(), 
-		"Startup has " + str(startup_sprites.size()) + " sprites but only " + 
-		str(frame_data.startup) + " frames! Add frames or remove sprites.")
-	assert(frame_data.active >= active_sprites.size(), 
-		"Active has too many sprites for frames!")
-	assert(frame_data.recovery >= recovery_sprites.size(),
-		"Recovery has too many sprites for frames!")
+	for i in sprites.keys():
+		var path = base_path.path_join(i)
+		sprites[i] = load_sprites_from_folder(path)
+
+func load_sprites_from_folder(folder : String) -> Array:
+	var folder_sprites = []
+	if not DirAccess.dir_exists_absolute(folder):
+		print("ERROR while loading ", folder)
+		return folder_sprites
+	var dir = DirAccess.open(folder)
+	if not dir:
+		print("how did we get here??????")
+		return folder_sprites
+	dir.list_dir_begin()
+	var file_name = dir.get_next()
+	while file_name != "":
+		if _validate_image(file_name):
+			var full_path = folder.path_join(file_name)
+			print("getting file: ", full_path)
+			var texture = ResourceLoader.load(full_path)
+			if texture:
+				folder_sprites.append(texture)
+			else:
+				print("Load failed!")
+		else:
+			print("not img file")
+		file_name = dir.get_next()
+	dir.list_dir_end()
+	return folder_sprites
+
+func _validate_image(file_name : String) -> bool:
+	if file_name.ends_with(".import") or file_name.begins_with("."):
+		return false
+	var file = file_name.get_extension().to_lower()
+	return file in ["png", "jpg", "jpeg"]
 
 func get_sprite_for_frame(gameplay_frame: int) -> Texture2D:
 	var phase = frame_data.get_phase(gameplay_frame)
@@ -28,7 +57,6 @@ func get_sprite_for_frame(gameplay_frame: int) -> Texture2D:
 	
 	if phase_sprites.is_empty():
 		return null
-	
 	# Calculate frame within current phase
 	var frame_in_phase : int
 	var frames_in_phase : int
@@ -44,11 +72,17 @@ func get_sprite_for_frame(gameplay_frame: int) -> Texture2D:
 			frame_in_phase = gameplay_frame - frame_data.startup - frame_data.active
 			frames_in_phase = frame_data.recovery
 	
-	# YOUR FORMULA (works because of constraint)
 	var sprite_index = (frame_in_phase * phase_sprites.size()) / frames_in_phase
+	sprite_index = clampi(sprite_index, 0, phase_sprites.size() - 1)
 	return phase_sprites[sprite_index]
 
+func get_movement_for_frame(gameplay_frame : int) -> Vector2:
+	if gameplay_frame >= 0 and gameplay_frame < movement.size():
+		return movement[gameplay_frame]
+	return Vector2.ZERO
+
 func get_hitbox_index_for_frame(gameplay_frame: int) -> int:
+	#1-
 	if not frame_data.is_in_active(gameplay_frame):
 		return 0
 	
